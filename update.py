@@ -1,6 +1,3 @@
-import os
-import re
-import psycopg2
 from clone import getTables, loadData, updateLog, local, VISUAL
 
 def getLastUpdate():
