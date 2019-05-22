@@ -21,23 +21,23 @@ VISUAL = [
 ]
 
 def createTable(table):
-  if not table in existing:
-    print('CREATING ' + table)
-    m = re.search(r"(point|line|poly)", table)
-    if m:
-      geom = GEOMS[m.group(0)]
-      local.execute("""CREATE TABLE {} (
-        "objectid" int,
-        "name" text,
-        "firstyear" int,
-        "lastyear" int,
-        "firstdate" int,
-        "lastdate" int,
-        "type" text,
-        "geom" geometry({}, 4326),
-        PRIMARY KEY ("objectid")
-      )""".format(table, geom))
-    local_conn.commit()
+  print('CREATING ' + table)
+  m = re.search(r"(point|line|poly)", table)
+  if m:
+    geom = GEOMS[m.group(0)]
+    local.execute("DROP TABLE IF EXISTS {}".format(table))
+    local.execute("""CREATE TABLE {} (
+      "objectid" int,
+      "name" text,
+      "firstyear" int,
+      "lastyear" int,
+      "firstdate" int,
+      "lastdate" int,
+      "type" text,
+      "geom" geometry({}, 4326),
+      PRIMARY KEY ("objectid")
+    )""".format(table, geom))
+  local_conn.commit()
 
 def loadData(table):
   print('LOADING DATA FROM ' + table)
@@ -57,28 +57,21 @@ def loadData(table):
   for r in results:
     if r[-1] != 'EMPTY':
       local.execute("""INSERT INTO {} VALUES (
-          %s,
-          %s,
-          %s,
-          %s,
-          %s,
-          %s,
-          %s,
-          ST_Multi(ST_GeomFromText(%s, 4326))
-        )
-        ON CONFLICT (objectid) 
-        DO NOTHING""".format(table), r)
+        %s,
+        %s,
+        %s,
+        %s,
+        %s,
+        %s,
+        %s,
+        ST_Multi(ST_GeomFromText(%s, 4326))
+      )""".format(table), r)
   local_conn.commit()
 
 # Feteching remote tables
 remote.execute("SELECT viewname FROM pg_catalog.pg_views WHERE viewname LIKE '%evw'")
 tables = remote.fetchall()
 tables = list(map(lambda t: t[0], tables))
-
-# Fetching local tables
-local.execute("SELECT tablename FROM pg_catalog.pg_tables")
-existing = local.fetchall()
-existing = list(map(lambda e: e[0], existing))
 
 for t in tables:
   table = re.sub(r"_evw$", "", t)
