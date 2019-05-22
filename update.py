@@ -14,3 +14,5 @@ if __name__ == "__main__":
   for table in tables:
     if not table in VISUAL:
       loadData(table, last)
+
+  updateLog('update')
