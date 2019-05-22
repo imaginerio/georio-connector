@@ -4,8 +4,13 @@ import re
 import psycopg2
 
 remote_conn = psycopg2.connect(
-  "host='128.42.130.18' dbname='hw_houston' user='{}' password='{}'"
-    .format(os.environ.get('DBUSER'), os.environ.get('DBPASS'))
+  "host='{}' dbname='{}' user='{}' password='{}'"
+    .format(
+      os.environ.get('DBHOST'),
+      os.environ.get('DBNAME'),
+      os.environ.get('DBUSER'),
+      os.environ.get('DBPASS')
+    )
 )
 remote = remote_conn.cursor()
 local_conn = psycopg2.connect("host='localhost' dbname='houston'")
