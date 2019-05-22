@@ -1,7 +1,11 @@
 import re
+import os
 import psycopg2
 
-remote_conn = psycopg2.connect("host='128.42.130.18' dbname='hw_houston' user='connector' password='SQ<r?6yT=.#cfm<H'")
+remote_conn = psycopg2.connect(
+  "host='128.42.130.18' dbname='hw_houston' user='{}' password='{}'"
+    .format(os.environ.get('DBUSER'), os.environ.get('DBPASS'))
+)
 remote = remote_conn.cursor()
 local_conn = psycopg2.connect("host='localhost' dbname='houston'")
 local = local_conn.cursor()
@@ -37,7 +41,7 @@ def createTable(table):
       "geom" geometry({}, 4326),
       PRIMARY KEY ("objectid")
     )""".format(table, geom))
-  local_conn.commit()
+    local_conn.commit()
 
 def loadData(table):
   print('LOADING DATA FROM ' + table)
@@ -78,3 +82,4 @@ for t in tables:
   if not table in VISUAL:
     createTable(table)
     loadData(table)
+    quit()
