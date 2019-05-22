@@ -1,5 +1,6 @@
-import re
+import datetime
 import os
+import re
 import psycopg2
 
 remote_conn = psycopg2.connect(
@@ -78,9 +79,24 @@ def getTables():
   tables = remote.fetchall()
   return list(map(lambda t: re.sub(r"_evw$", "", t[0]), tables))
 
+def updateLog(type):
+  local.execute("""CREATE TABLE IF NOT EXISTS update_log (
+    "id" serial,
+    "type" text,
+    "date" timestamp without time zone,
+    PRIMARY KEY ("id")
+  )""")
+  local.execute("""INSERT INTO update_log VALUES (
+    DEFAULT,
+    %s,
+    %s
+  )""", (type, datetime.datetime.now()))
+  local_conn.commit()
+
 tables = getTables()
 for table in tables:
   if not table in VISUAL:
     createTable(table)
     loadData(table)
-    quit()
+
+updateLog('clone')
