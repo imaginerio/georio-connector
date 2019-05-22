@@ -44,9 +44,9 @@ def createTable(table):
     )""".format(table, geom))
     local_conn.commit()
 
-def loadData(table):
+def loadData(table, date=None):
   print('LOADING DATA FROM ' + table)
-  remote.execute("""SELECT
+  q = """SELECT
       objectid,
       name,
       firstyear,
@@ -55,23 +55,37 @@ def loadData(table):
       lastdate,
       type,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
-    FROM uilvim.{}_evw""".format(table))
+    FROM uilvim.{}_evw""".format(table)
+  if date:
+    q += " WHERE last_edited_date > %s OR created_date > %s"
+  remote.execute(q, (date, date))
   results = remote.fetchall()
 
-  print('INSERTING DATA INTO ' + table)
-  for r in results:
-    if r[-1] != 'EMPTY':
-      local.execute("""INSERT INTO {} VALUES (
-        %s,
-        %s,
-        %s,
-        %s,
-        %s,
-        %s,
-        %s,
-        ST_Multi(ST_GeomFromText(%s, 4326))
-      )""".format(table), r)
-  local_conn.commit()
+  if len(results) > 0:
+    print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + table)
+    for r in results:
+      if r[-1] != 'EMPTY':
+        local.execute("""INSERT INTO {} VALUES (
+          %s,
+          %s,
+          %s,
+          %s,
+          %s,
+          %s,
+          %s,
+          ST_Multi(ST_GeomFromText(%s, 4326))
+        )
+        ON CONFLICT (objectid) DO UPDATE
+          SET
+            objectid = %s,
+            name = %s,
+            firstyear = %s,
+            lastyear = %s,
+            firstdate = %s,
+            lastdate = %s,
+            type = %s,
+            geom = ST_Multi(ST_GeomFromText(%s, 4326))""".format(table), r + r)
+    local_conn.commit()
 
 # Feteching remote tables
 def getTables():
@@ -92,11 +106,12 @@ def updateLog(type):
     %s
   )""", (type, datetime.datetime.now()))
   local_conn.commit()
+if __name__ == "__main__":
+  tables = getTables()
+  for table in tables:
+    if not table in VISUAL:
+      createTable(table)
+      loadData(table)
+      quit()
 
-tables = getTables()
-for table in tables:
-  if not table in VISUAL:
-    createTable(table)
-    loadData(table)
-
-updateLog('clone')
+  updateLog('clone')
