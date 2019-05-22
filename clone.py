@@ -73,12 +73,13 @@ def loadData(table):
   local_conn.commit()
 
 # Feteching remote tables
-remote.execute("SELECT viewname FROM pg_catalog.pg_views WHERE viewname LIKE '%evw'")
-tables = remote.fetchall()
-tables = list(map(lambda t: t[0], tables))
+def getTables():
+  remote.execute("SELECT viewname FROM pg_catalog.pg_views WHERE viewname LIKE '%evw'")
+  tables = remote.fetchall()
+  return list(map(lambda t: re.sub(r"_evw$", "", t[0]), tables))
 
-for t in tables:
-  table = re.sub(r"_evw$", "", t)
+tables = getTables()
+for table in tables:
   if not table in VISUAL:
     createTable(table)
     loadData(table)
