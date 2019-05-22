@@ -55,18 +55,19 @@ def loadData(table):
 
   print('INSERTING DATA INTO ' + table)
   for r in results:
-    local.execute("""INSERT INTO {} VALUES (
-        %s,
-        %s,
-        %s,
-        %s,
-        %s,
-        %s,
-        %s,
-        ST_Multi(ST_GeomFromText(%s, 4326))
-      )
-      ON CONFLICT (objectid) 
-      DO NOTHING""".format(table), r)
+    if r[-1] != 'EMPTY':
+      local.execute("""INSERT INTO {} VALUES (
+          %s,
+          %s,
+          %s,
+          %s,
+          %s,
+          %s,
+          %s,
+          ST_Multi(ST_GeomFromText(%s, 4326))
+        )
+        ON CONFLICT (objectid) 
+        DO NOTHING""".format(table), r)
   local_conn.commit()
 
 # Feteching remote tables
