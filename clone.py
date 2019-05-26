@@ -31,37 +31,39 @@ VISUAL = [
   'planextentspoly'
 ]
 
-def createTable(table):
+def createTable(table, geom):
   print('CREATING ' + table)
-  m = re.search(r"(point|line|poly)", table)
-  if m:
-    geom = GEOMS[m.group(0)]
-    local.execute("DROP TABLE IF EXISTS {}".format(table))
-    local.execute("""CREATE TABLE {} (
-      "objectid" int,
-      "name" text,
-      "firstyear" int,
-      "lastyear" int,
-      "firstdate" int,
-      "lastdate" int,
-      "type" text,
-      "geom" geometry({}, 4326),
-      PRIMARY KEY ("objectid")
-    )""".format(table, geom))
-    local_conn.commit()
+  local.execute('DROP TABLE IF EXISTS "{}"'.format(table))
+  local.execute("""CREATE TABLE "{}" (
+    "objectid" int,
+    "name" text,
+    "layer" text,
+    "firstyear" int,
+    "lastyear" int,
+    "firstdate" int,
+    "lastdate" int,
+    "type" text,
+    "geom" geometry({}, 4326),
+    PRIMARY KEY ("objectid")
+  )""".format(table, geom))
+  local_conn.commit()
 
 def loadData(table, date=None):
+  layer = re.sub(r"(point|line|poly)", "", table)
+  m = re.search(r"(point|line|poly)", table)
+  feature = tableName(m.group(0))
   print('LOADING DATA FROM ' + table)
   q = """SELECT
       objectid,
       name,
+      '{}' AS layer,
       firstyear,
       lastyear,
       firstdate,
       lastdate,
       type,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
-    FROM uilvim.{}_evw""".format(table)
+    FROM uilvim.{}_evw""".format(layer, table)
   if date:
     q += " WHERE last_edited_date > %s OR created_date > %s"
   remote.execute(q, (date, date))
@@ -69,14 +71,15 @@ def loadData(table, date=None):
 
   years = []
   if len(results) > 0:
-    print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + table)
+    print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
     for r in results:
       if r[-1] != 'EMPTY':
         years.append([
           r[2] or int(math.floor(r[4] / 10000)), 
           r[3] or int(math.floor(r[5] / 10000))
         ])
-        local.execute("""INSERT INTO {} VALUES (
+        local.execute("""INSERT INTO "{}" VALUES (
+          %s,
           %s,
           %s,
           %s,
@@ -90,12 +93,13 @@ def loadData(table, date=None):
           SET
             objectid = %s,
             name = %s,
+            layer = %s,
             firstyear = %s,
             lastyear = %s,
             firstdate = %s,
             lastdate = %s,
             type = %s,
-            geom = ST_Multi(ST_GeomFromText(%s, 4326))""".format(table), r + r)
+            geom = ST_Multi(ST_GeomFromText(%s, 4326))""".format(feature), r + r)
     local_conn.commit()
   return years
 
@@ -118,12 +122,18 @@ def updateLog(type):
     %s
   )""", (type, datetime.datetime.now()))
   local_conn.commit()
+
+def tableName(g):
+  g = "polygon" if g == "poly" else g
+  return g.capitalize() + 's'
+
 if __name__ == "__main__":
+  for g in GEOMS:
+    createTable(tableName(g), GEOMS[g])
+
   tables = getTables()
   for table in tables:
     if not table in VISUAL:
-      createTable(table)
       loadData(table)
-      quit()
 
   updateLog('clone')
