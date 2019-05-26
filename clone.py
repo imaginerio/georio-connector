@@ -1,4 +1,5 @@
 import datetime
+import math
 import os
 import re
 import psycopg2
@@ -66,10 +67,15 @@ def loadData(table, date=None):
   remote.execute(q, (date, date))
   results = remote.fetchall()
 
+  years = []
   if len(results) > 0:
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + table)
     for r in results:
       if r[-1] != 'EMPTY':
+        years.append([
+          r[2] or int(math.floor(r[4] / 10000)), 
+          r[3] or int(math.floor(r[5] / 10000))
+        ])
         local.execute("""INSERT INTO {} VALUES (
           %s,
           %s,
@@ -91,6 +97,7 @@ def loadData(table, date=None):
             type = %s,
             geom = ST_Multi(ST_GeomFromText(%s, 4326))""".format(table), r + r)
     local_conn.commit()
+  return years
 
 # Feteching remote tables
 def getTables():
