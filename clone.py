@@ -46,6 +46,9 @@ def createTable(table, geom):
     "geom" geometry({}, 4326),
     PRIMARY KEY ("objectid")
   )""".format(table, geom))
+  local.execute("""CREATE INDEX {}_geom_idx
+    ON "{}"
+    USING GIST (geom);""".format(table, table))
   local_conn.commit()
 
 def loadData(table, date=None):
@@ -135,5 +138,9 @@ if __name__ == "__main__":
   for table in tables:
     if not table in VISUAL:
       loadData(table)
+
+  local_conn.autocommit = True
+  for g in GEOMS:
+    local.execute('VACUUM ANALYZE "{}"'.format(tableName(g)))
 
   updateLog('clone')
