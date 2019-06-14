@@ -2,7 +2,9 @@ import datetime
 import math
 import os
 import re
+import requests
 import psycopg2
+from psycopg2.extras import NamedTupleCursor
 
 remote_conn = psycopg2.connect(
   "host='{}' dbname='{}' user='{}' password='{}'"
@@ -13,7 +15,7 @@ remote_conn = psycopg2.connect(
       os.environ.get('DBPASS')
     )
 )
-remote = remote_conn.cursor()
+remote = remote_conn.cursor(cursor_factory=NamedTupleCursor)
 local_conn = psycopg2.connect("host='localhost' dbname='houston'")
 local = local_conn.cursor()
 
@@ -77,33 +79,8 @@ def loadData(table, date=None):
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
     for r in results:
       if r[-1] != 'EMPTY':
-        years.append([
-          r[2] or int(math.floor(r[4] / 10000)), 
-          r[3] or int(math.floor(r[5] / 10000))
-        ])
-        local.execute("""INSERT INTO "{}" VALUES (
-          %s,
-          %s,
-          %s,
-          %s,
-          %s,
-          %s,
-          %s,
-          %s,
-          ST_Multi(ST_GeomFromText(%s, 4326))
-        )
-        ON CONFLICT (objectid) DO UPDATE
-          SET
-            objectid = %s,
-            name = %s,
-            layer = %s,
-            firstyear = %s,
-            lastyear = %s,
-            firstdate = %s,
-            lastdate = %s,
-            type = %s,
-            geom = ST_Multi(ST_GeomFromText(%s, 4326))""".format(feature), r + r)
-    local_conn.commit()
+        r = requests.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', r._asdict())
+        print(r.content)
   return years
 
 # Feteching remote tables
@@ -128,7 +105,7 @@ def updateLog(type):
 
 def tableName(g):
   g = "polygon" if g == "poly" else g
-  return g.capitalize() + 's'
+  return g
 
 if __name__ == "__main__":
   for g in GEOMS:
