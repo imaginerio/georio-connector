@@ -25,33 +25,16 @@ GEOMS = {
   'poly': 'MULTIPOLYGON'
 }
 
-VISUAL = [
+SKIP_TABLES = [
+  'hidrographyline',
+  'hidrographypoly',
+  'buildingspoly',
   'basemapextentspoly',
   'mapextentspoly',
   'viewconeextentspoly',
   'aerialextentspoly',
   'planextentspoly'
 ]
-
-def createTable(table, geom):
-  print('CREATING ' + table)
-  local.execute('DROP TABLE IF EXISTS "{}"'.format(table))
-  local.execute("""CREATE TABLE "{}" (
-    "objectid" int,
-    "name" text,
-    "layer" text,
-    "firstyear" int,
-    "lastyear" int,
-    "firstdate" int,
-    "lastdate" int,
-    "type" text,
-    "geom" geometry({}, 4326),
-    PRIMARY KEY ("objectid")
-  )""".format(table, geom))
-  local.execute("""CREATE INDEX {}_geom_idx
-    ON "{}"
-    USING GIST (geom);""".format(table, table))
-  local_conn.commit()
 
 def loadData(table, date=None):
   layer = re.sub(r"(point|line|poly)", "", table)
@@ -79,8 +62,7 @@ def loadData(table, date=None):
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
     for r in results:
       if r[-1] != 'EMPTY':
-        feature_data = { feature: r._asdict() }
-        r = requests.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', feature_data)
+        r = requests.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', r._asdict())
   return years
 
 # Feteching remote tables
@@ -108,12 +90,9 @@ def tableName(g):
   return g
 
 if __name__ == "__main__":
-  for g in GEOMS:
-    createTable(tableName(g), GEOMS[g])
-
   tables = getTables()
   for table in tables:
-    if not table in VISUAL:
+    if not table in SKIP_TABLES:
       loadData(table)
 
   local_conn.autocommit = True
