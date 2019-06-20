@@ -79,8 +79,8 @@ def loadData(table, date=None):
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
     for r in results:
       if r[-1] != 'EMPTY':
-        r = requests.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', r._asdict())
-        print(r.content)
+        feature_data = { feature: r._asdict() }
+        r = requests.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', feature_data)
   return years
 
 # Feteching remote tables
