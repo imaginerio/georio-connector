@@ -7,7 +7,7 @@ import psycopg2
 from psycopg2.extras import NamedTupleCursor
 
 remote_conn = psycopg2.connect(
-  "host='{}' dbname='{}' user='{}' password='{}'"
+  "host='{}' dbname='{}' user='{}' password='{}' options='-c statement_timeout=3000s'"
     .format(
       os.environ.get('DBHOST'),
       os.environ.get('DBNAME'),
@@ -26,9 +26,6 @@ GEOMS = {
 }
 
 SKIP_TABLES = [
-  'hidrographyline',
-  'hidrographypoly',
-  'buildingspoly',
   'basemapextentspoly',
   'mapextentspoly',
   'viewconeextentspoly',
@@ -62,7 +59,9 @@ def loadData(table, date=None):
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
     for r in results:
       if r[-1] != 'EMPTY':
-        r = requests.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', r._asdict())
+        data = r._asdict()
+        data['geometry'] = feature
+        r = requests.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', data)
   return years
 
 # Feteching remote tables
