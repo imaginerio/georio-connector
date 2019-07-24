@@ -14,7 +14,10 @@ remote_conn = psycopg2.connect(
     )
 )
 remote = remote_conn.cursor()
-local_conn = psycopg2.connect("host='localhost' dbname='houston'")
+local_conn = psycopg2.connect(
+  "host='localhost' dbname='{}'"
+    .format(os.environ.get('LOCALDB'))
+)
 local = local_conn.cursor()
 
 GEOMS = {
@@ -23,10 +26,15 @@ GEOMS = {
   'poly': 'MULTIPOLYGON'
 }
 
+SKIP = [
+  'basemapextentspoly',
+  'landextentspoly'
+]
+
 VISUAL = [
   'basemapextentspoly',
   'mapextentspoly',
-  'viewconeextentspoly',
+  'viewconespoly',
   'aerialextentspoly',
   'planextentspoly'
 ]
@@ -35,26 +43,77 @@ def createTable(table, geom):
   print('CREATING ' + table)
   local.execute('DROP TABLE IF EXISTS "{}"'.format(table))
   local.execute("""CREATE TABLE "{}" (
-    "objectid" int,
+    "gid" SERIAL,
+    "remoteid" int,
     "name" text,
     "layer" text,
-    "firstyear" int,
-    "lastyear" int,
-    "firstdate" int,
-    "lastdate" int,
-    "type" text,
+    "firstdispl" int,
+    "lastdispla" int,
+    "featuretyp" text,
+    "stylename" text,
     "geom" geometry({}, 4326),
-    PRIMARY KEY ("objectid")
+    PRIMARY KEY ("gid")
   )""".format(table, geom))
   local.execute("""CREATE INDEX {}_geom_idx
     ON "{}"
     USING GIST (geom);""".format(table, table))
   local_conn.commit()
 
+def loadVisual(table):
+  print('LOADING VISUAL DATA FROM ' + table)
+  if table == 'viewconespoly':
+    layer = 'viewsheds'
+    coords = ''
+  else:
+    layer = re.sub(r"extentspoly$", 's', table)
+    coords = 'NULL AS'
+  q = """SELECT
+      '{}' AS layer,
+      ss_id,
+      creator,
+      NULL AS repository,
+      firstyear,
+      lastyear,
+      ssc_id,
+      ST_AsText(ST_Transform(shape, 4326)) AS geom,
+      NULL AS uploaddate,
+      {} latitude,
+      {} longitude,
+      creditline,
+      title,
+      date
+    FROM {}.{}_evw""".format(layer, coords, coords, os.environ.get('DBSCHEMA'), table)
+  remote.execute(q)
+  results = remote.fetchall()
+
+  if len(results) > 0:
+    table = 'viewsheds' if table == 'viewconespoly' else 'mapsplans'
+    print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + table)
+    # local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
+    for r in results:
+      local.execute("""INSERT INTO "{}" VALUES (
+        DEFAULT,
+        %s,
+        %s,
+        %s,
+        %s,
+        %s,
+        %s,
+        %s,
+        ST_GeomFromText(%s, 4326),
+        %s,
+        %s,
+        %s,
+        %s,
+        %s,
+        %s)""".format(table), r)
+    local_conn.commit()
+
 def loadData(table, date=None):
   layer = re.sub(r"(point|line|poly)", "", table)
   m = re.search(r"(point|line|poly)", table)
   feature = tableName(m.group(0))
+  
   print('LOADING DATA FROM ' + table)
   q = """SELECT
       objectid,
@@ -62,11 +121,10 @@ def loadData(table, date=None):
       '{}' AS layer,
       firstyear,
       lastyear,
-      firstdate,
-      lastdate,
-      type,
+      subtype,
+      stylename,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
-    FROM uilvim.{}_evw""".format(layer, table)
+    FROM {}.{}_evw""".format(layer, os.environ.get('DBSCHEMA'), table)
   if date:
     q += " WHERE last_edited_date > %s OR created_date > %s"
   remote.execute(q, (date, date))
@@ -82,9 +140,9 @@ def loadData(table, date=None):
           r[3] or int(math.floor(r[5] / 10000))
         ])
         local.execute("""INSERT INTO "{}" VALUES (
+          DEFAULT,
           %s,
-          %s,
-          %s,
+          %s, 
           %s,
           %s,
           %s,
@@ -92,16 +150,15 @@ def loadData(table, date=None):
           %s,
           ST_Multi(ST_GeomFromText(%s, 4326))
         )
-        ON CONFLICT (objectid) DO UPDATE
+        ON CONFLICT (gid) DO UPDATE
           SET
-            objectid = %s,
+            remoteid = %s,
             name = %s,
             layer = %s,
-            firstyear = %s,
-            lastyear = %s,
-            firstdate = %s,
-            lastdate = %s,
-            type = %s,
+            firstdispl = %s,
+            lastdispla = %s,
+            featuretyp = %s,
+            stylename = %s,
             geom = ST_Multi(ST_GeomFromText(%s, 4326))""".format(feature), r + r)
     local_conn.commit()
   return years
@@ -127,8 +184,7 @@ def updateLog(type):
   local_conn.commit()
 
 def tableName(g):
-  g = "polygon" if g == "poly" else g
-  return g.capitalize() + 's'
+  return 'base' + g
 
 if __name__ == "__main__":
   for g in GEOMS:
@@ -136,8 +192,11 @@ if __name__ == "__main__":
 
   tables = getTables()
   for table in tables:
-    if not table in VISUAL:
-      loadData(table)
+    if not table in SKIP:
+      if table in VISUAL:
+        loadVisual(table)
+      else:
+        loadData(table)
 
   local_conn.autocommit = True
   for g in GEOMS:
