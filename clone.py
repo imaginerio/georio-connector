@@ -15,6 +15,7 @@ remote_conn = psycopg2.connect(
       os.environ.get('DBPASS')
     )
 )
+remote_conn.set_client_encoding('UTF8')
 remote = remote_conn.cursor(cursor_factory=NamedTupleCursor)
 local_conn = psycopg2.connect("host='localhost' dbname='houston'")
 local = local_conn.cursor()
