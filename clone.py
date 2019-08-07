@@ -5,6 +5,7 @@ import re
 import requests
 import psycopg2
 from psycopg2.extras import NamedTupleCursor
+from requests_futures.sessions import FuturesSession
 
 remote_conn = psycopg2.connect(
   "host='{}' dbname='{}' user='{}' password='{}' options='-c statement_timeout=3000s'"
@@ -72,7 +73,7 @@ def loadData(table, date=None):
       years = []
       if len(results) > 0:
         print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
-        s = requests.Session()
+        s = FuturesSession(max_workers=20)
         for r in results:
           if r[-1] != 'EMPTY':
             geojson = r._asdict()
@@ -81,8 +82,6 @@ def loadData(table, date=None):
               typeId = type_dict[geojson['type']]
               del geojson['type']
               r = s.post('http://localhost:5000/api/v1/feature/create/', json={ 'type': typeId, 'dataType': 'wkt', 'geometry': feature, 'data': geojson })
-              print(r)
-              exit()
     return years
 
 # Feteching remote tables

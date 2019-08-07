@@ -8,6 +8,7 @@ verify_ssl = true
 [packages]
 psycopg2-binary = "*"
 requests = "*"
+requests-futures = "*"
 
 [requires]
 python_version = "3.6"
