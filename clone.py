@@ -35,36 +35,55 @@ SKIP_TABLES = [
 ]
 
 def loadData(table, date=None):
-  layer = re.sub(r"(point|line|poly)", "", table)
   m = re.search(r"(point|line|poly)", table)
   feature = tableName(m.group(0))
-  print('LOADING DATA FROM ' + table)
-  q = """SELECT
-      objectid,
-      name,
-      '{}' AS layer,
-      firstyear,
-      lastyear,
-      firstdate,
-      lastdate,
-      type,
-      ST_AsText(ST_Transform(shape, 4326)) AS geom
-    FROM uilvim.{}_evw""".format(layer, table)
-  if date:
-    q += " WHERE last_edited_date > %s OR created_date > %s"
-  remote.execute(q, (date, date))
-  results = remote.fetchall()
+  layer_request = requests.post('http://localhost:5000/api/v1/layer/create/', json={ 'data': { 'title': table, 'geometry': feature } })
+  if layer_request.status_code == 200:
+    layer = layer_request.json()['response']
 
-  years = []
-  if len(results) > 0:
-    print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
-    s = requests.Session()
-    for r in results:
-      if r[-1] != 'EMPTY':
-        data = r._asdict()
-        data['geometry'] = feature
-        r = s.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', data)
-  return years
+    print('LOADING AND CREATING TYPES FROM ' + table)
+    q = """SELECT type FROM uilvim.{}_evw GROUP BY type ORDER BY type""".format(table)
+    remote.execute(q)
+    types = remote.fetchall()
+    type_dict = {}
+    if len(types) > 0:
+      for t in types:
+        type_title = t._asdict()['type']
+        type_request = requests.post('http://localhost:5000/api/v1/type/create/', json={ 'layer': layer, 'data': { 'title': type_title } })
+        if type_request.status_code == 200:
+          type_dict[type_title] = type_request.json()['response']
+
+      print('LOADING DATA FROM ' + table)
+      q = """SELECT
+          objectid,
+          name,
+          firstyear,
+          lastyear,
+          firstdate,
+          lastdate,
+          type,
+          ST_AsText(ST_Transform(shape, 4326)) AS geom
+        FROM uilvim.{}_evw""".format(table)
+      if date:
+        q += " WHERE last_edited_date > %s OR created_date > %s"
+      remote.execute(q, (date, date))
+      results = remote.fetchall()
+
+      years = []
+      if len(results) > 0:
+        print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
+        s = requests.Session()
+        for r in results:
+          if r[-1] != 'EMPTY':
+            geojson = r._asdict()
+            geojson['geometry'] = feature
+            if geojson['type'] in type_dict:
+              typeId = type_dict[geojson['type']]
+              del geojson['type']
+              r = s.post('http://localhost:5000/api/v1/feature/create/', json={ 'type': typeId, 'dataType': 'wkt', 'geometry': feature, 'data': geojson })
+              print(r)
+              exit()
+    return years
 
 # Feteching remote tables
 def getTables():
