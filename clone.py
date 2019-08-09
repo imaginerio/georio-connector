@@ -1,11 +1,12 @@
 import datetime
+import json
 import math
 import os
 import re
 import requests
 import psycopg2
 from psycopg2.extras import NamedTupleCursor
-from requests_futures.sessions import FuturesSession
+import shortuuid
 
 remote_conn = psycopg2.connect(
   "host='{}' dbname='{}' user='{}' password='{}' options='-c statement_timeout=3000s'"
@@ -18,7 +19,7 @@ remote_conn = psycopg2.connect(
 )
 remote_conn.set_client_encoding('UTF8')
 remote = remote_conn.cursor(cursor_factory=NamedTupleCursor)
-local_conn = psycopg2.connect("host='localhost' dbname='houston'")
+local_conn = psycopg2.connect("host='localhost' dbname='georio-store'")
 local = local_conn.cursor()
 
 GEOMS = {
@@ -28,6 +29,7 @@ GEOMS = {
 }
 
 SKIP_TABLES = [
+  'immigrantbusinesspoint',
   'basemapextentspoly',
   'mapextentspoly',
   'viewconeextentspoly',
@@ -35,10 +37,12 @@ SKIP_TABLES = [
   'planextentspoly'
 ]
 
-def loadData(table, date=None):
+def loadData(table, metadata, date=None):
   m = re.search(r"(point|line|poly)", table)
   feature = tableName(m.group(0))
-  layer_request = requests.post('http://localhost:5000/api/v1/layer/create/', json={ 'data': { 'title': table, 'geometry': feature } })
+  metadata['geometry'] = feature
+  metadata['remoteId'] = table
+  layer_request = requests.post('http://localhost:5000/api/v1/layer/create/', json={ 'data': metadata })
   if layer_request.status_code == 200:
     layer = layer_request.json()['response']
 
@@ -49,40 +53,64 @@ def loadData(table, date=None):
     type_dict = {}
     if len(types) > 0:
       for t in types:
-        type_title = t._asdict()['type']
-        type_request = requests.post('http://localhost:5000/api/v1/type/create/', json={ 'layer': layer, 'data': { 'title': type_title } })
+        type_data = {}
+        type_data['title'] = t._asdict()['type']
+        type_data['remoteId'] = type_data['title'].lower().replace(' ', '-')
+        if 'types' in metadata:
+          type_data['minzoom'] = metadata['types'][type_data['remoteId']]
+        type_request = requests.post('http://localhost:5000/api/v1/type/create/', json={ 'layer': layer, 'data': type_data })
         if type_request.status_code == 200:
-          type_dict[type_title] = type_request.json()['response']
+          type_dict[type_data['title']] = type_request.json()['response']
 
-      print('LOADING DATA FROM ' + table)
+      print('LOADING DATA FROM {}'.format(table))
       q = """SELECT
           objectid,
           name,
           firstyear,
           lastyear,
-          firstdate,
-          lastdate,
+          TO_DATE(firstdate::TEXT, 'YYYYMMDD') AS firstdate,
+          TO_DATE(lastdate::TEXT, 'YYYYMMDD') AS lastdate,
           type,
           ST_AsText(ST_Transform(shape, 4326)) AS geom
-        FROM uilvim.{}_evw""".format(table)
-      if date:
-        q += " WHERE last_edited_date > %s OR created_date > %s"
+        FROM uilvim.{}_evw
+        WHERE firstyear IS NOT NULL
+          AND lastyear IS NOT NULL""".format(table)
       remote.execute(q, (date, date))
       results = remote.fetchall()
 
       years = []
       if len(results) > 0:
         print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
-        s = FuturesSession(max_workers=20)
         for r in results:
           if r[-1] != 'EMPTY':
             geojson = r._asdict()
-            geojson['geometry'] = feature
-            if geojson['type'] in type_dict:
-              typeId = type_dict[geojson['type']]
-              del geojson['type']
-              r = s.post('http://localhost:5000/api/v1/feature/create/', json={ 'type': typeId, 'dataType': 'wkt', 'geometry': feature, 'data': geojson })
-    return years
+            q = """INSERT INTO {} VALUES (
+              %s,
+              %s,
+              %s,
+              %s,
+              %s,
+              %s,
+              %s,
+              %s,
+              ST_Multi(ST_GeomFromText(%s, 4326)),
+              ST_Transform(ST_Multi(ST_GeomFromText(%s, 4326)), 3857),
+              NOW(),
+              NOW()
+            )""".format(feature + 's')
+            local.execute(q, (
+              shortuuid.uuid(),
+              geojson['objectid'],
+              geojson['name'],
+              geojson['firstyear'],
+              geojson['lastyear'],
+              geojson['firstdate'],
+              geojson['lastdate'],
+              type_dict[geojson['type']],
+              geojson['geom'],
+              geojson['geom']
+            ))
+        local_conn.commit()
 
 # Feteching remote tables
 def getTables():
@@ -109,13 +137,15 @@ def tableName(g):
   return g
 
 if __name__ == "__main__":
-  tables = getTables()
-  for table in tables:
-    if not table in SKIP_TABLES:
-      loadData(table)
+  with open('metadata.json') as json_file:
+    metadata = json.load(json_file)
+    tables = getTables()
+    for table in tables:
+      if not table in SKIP_TABLES:
+        loadData(table, metadata[table])
 
   local_conn.autocommit = True
   for g in GEOMS:
-    local.execute('VACUUM ANALYZE "{}"'.format(tableName(g)))
+    local.execute('VACUUM ANALYZE "{}s"'.format(tableName(g)))
 
   updateLog('clone')
