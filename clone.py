@@ -71,10 +71,10 @@ def loadVisual(table):
       '{}' AS layer,
       ss_id,
       creator,
-      NULL AS repository,
+      ssc_id AS repository,
       firstyear,
       lastyear,
-      ssc_id,
+      notes,
       ST_AsText(ST_Transform(shape, 4326)) AS geom,
       NULL AS uploaddate,
       {} latitude,
@@ -89,7 +89,7 @@ def loadVisual(table):
   if len(results) > 0:
     table = 'viewsheds' if table == 'viewconespoly' else 'mapsplans'
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + table)
-    # local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
+    local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
     for r in results:
       local.execute("""INSERT INTO "{}" VALUES (
         DEFAULT,
