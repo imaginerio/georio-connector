@@ -76,9 +76,9 @@ def loadVisual(table):
     coords = 'NULL AS'
   q = """SELECT
       '{}' AS layer,
-      0 AS uuid,
+      ss_id AS uuid,
       creator,
-      ssc_id AS repository,
+      notes AS repository,
       firstyear,
       lastyear,
       ss_id AS imageid,
@@ -86,9 +86,10 @@ def loadVisual(table):
       NULL AS uploaddate,
       {} latitude,
       {} longitude,
-      notes,
+      creditline,
       title
-    FROM {}.{}_evw""".format(layer, coords, coords, os.environ.get('DBSCHEMA'), table)
+    FROM {}.{}_evw
+    WHERE ss_id IS NOT NULL""".format(layer, coords, coords, os.environ.get('DBSCHEMA'), table)
   remote.execute(q)
   results = remote.fetchall()
 
