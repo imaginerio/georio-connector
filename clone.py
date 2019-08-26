@@ -27,6 +27,11 @@ GEOMS = {
 }
 
 SKIP = [
+  'plannedpublicspacespoly',
+  'plannedutilitiesline',
+  'plannedbuildingspoly',
+  'plannedlandpoly',
+  'plannedroadsline',
   'basemapextentspoly',
   'landextentspoly'
 ]
@@ -45,12 +50,14 @@ def createTable(table, geom):
   local.execute("""CREATE TABLE "{}" (
     "gid" SERIAL,
     "remoteid" int,
-    "name" text,
+    "nameshort" text,
+    "namecomple" text,
     "layer" text,
     "firstdispl" int,
     "lastdispla" int,
     "featuretyp" text,
     "stylename" text,
+    "scalerank" int,
     "geom" geometry({}, 4326),
     PRIMARY KEY ("gid")
   )""".format(table, geom))
@@ -69,19 +76,18 @@ def loadVisual(table):
     coords = 'NULL AS'
   q = """SELECT
       '{}' AS layer,
-      ss_id,
+      0 AS uuid,
       creator,
       ssc_id AS repository,
       firstyear,
       lastyear,
-      notes,
+      ss_id AS imageid,
       ST_AsText(ST_Transform(shape, 4326)) AS geom,
       NULL AS uploaddate,
       {} latitude,
       {} longitude,
-      creditline,
-      title,
-      date
+      notes,
+      title
     FROM {}.{}_evw""".format(layer, coords, coords, os.environ.get('DBSCHEMA'), table)
   remote.execute(q)
   results = remote.fetchall()
@@ -105,24 +111,25 @@ def loadVisual(table):
         %s,
         %s,
         %s,
-        %s,
         %s)""".format(table), r)
     local_conn.commit()
 
 def loadData(table, date=None):
-  layer = re.sub(r"(point|line|poly)", "", table)
+  layer = table
   m = re.search(r"(point|line|poly)", table)
   feature = tableName(m.group(0))
   
   print('LOADING DATA FROM ' + table)
   q = """SELECT
       objectid,
+      nameshort,
       name,
       '{}' AS layer,
       firstyear,
       lastyear,
-      subtype,
+      type,
       stylename,
+      scalerank,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
     FROM {}.{}_evw""".format(layer, os.environ.get('DBSCHEMA'), table)
   if date:
@@ -135,10 +142,6 @@ def loadData(table, date=None):
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
     for r in results:
       if r[-1] != 'EMPTY':
-        years.append([
-          r[2] or int(math.floor(r[4] / 10000)), 
-          r[3] or int(math.floor(r[5] / 10000))
-        ])
         local.execute("""INSERT INTO "{}" VALUES (
           DEFAULT,
           %s,
@@ -148,18 +151,10 @@ def loadData(table, date=None):
           %s,
           %s,
           %s,
+          %s,
+          %s,
           ST_Multi(ST_GeomFromText(%s, 4326))
-        )
-        ON CONFLICT (gid) DO UPDATE
-          SET
-            remoteid = %s,
-            name = %s,
-            layer = %s,
-            firstdispl = %s,
-            lastdispla = %s,
-            featuretyp = %s,
-            stylename = %s,
-            geom = ST_Multi(ST_GeomFromText(%s, 4326))""".format(feature), r + r)
+        )""".format(feature), r)
     local_conn.commit()
   return years
 
