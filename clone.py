@@ -44,6 +44,11 @@ VISUAL = [
   'planextentspoly'
 ]
 
+CLEAR = {
+  'maps': True,
+  'cones': True
+}
+
 def createTable(table, geom):
   print('CREATING ' + table)
   local.execute('DROP TABLE IF EXISTS "{}"'.format(table))
@@ -78,10 +83,10 @@ def loadVisual(table):
       '{}' AS layer,
       ss_id AS uuid,
       creator,
-      notes AS repository,
+      ssc_id AS repository,
       firstyear,
       lastyear,
-      ss_id AS imageid,
+      notes AS imageid,
       ST_AsText(ST_Transform(shape, 4326)) AS geom,
       NULL AS uploaddate,
       {} latitude,
@@ -96,7 +101,13 @@ def loadVisual(table):
   if len(results) > 0:
     table = 'viewsheds' if table == 'viewconespoly' else 'mapsplans'
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + table)
-    local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
+    if table == 'viewsheds' and CLEAR['cones'] == True:
+      local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
+      CLEAR['cones'] = False
+    elif table == 'mapsplans' and CLEAR['maps'] == True:
+      local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
+      CLEAR['maps'] = False
+
     for r in results:
       local.execute("""INSERT INTO "{}" VALUES (
         DEFAULT,
