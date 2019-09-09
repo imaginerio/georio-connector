@@ -54,6 +54,7 @@ def createTable(table, geom):
   local.execute('DROP TABLE IF EXISTS "{}"'.format(table))
   local.execute("""CREATE TABLE "{}" (
     "gid" SERIAL,
+    "globalid" text,
     "remoteid" int,
     "nameshort" text,
     "namecomple" text,
@@ -64,6 +65,11 @@ def createTable(table, geom):
     "stylename" text,
     "scalerank" int,
     "geom" geometry({}, 4326),
+    "creator" text,
+    "firstowner" text,
+    "owner" text,
+    "occupant" text,
+    "address" text,
     PRIMARY KEY ("gid")
   )""".format(table, geom))
   local.execute("""CREATE INDEX {}_geom_idx
@@ -133,6 +139,7 @@ def loadData(table, date=None):
   
   print('LOADING DATA FROM ' + table)
   q = """SELECT
+      globalid,
       objectid,
       nameshort,
       name,
@@ -157,6 +164,7 @@ def loadData(table, date=None):
         local.execute("""INSERT INTO "{}" VALUES (
           DEFAULT,
           %s,
+          %s, 
           %s, 
           %s,
           %s,
