@@ -2,6 +2,7 @@ import datetime
 import math
 import os
 import re
+import uuid
 import psycopg2
 
 remote_conn = psycopg2.connect(
@@ -39,19 +40,30 @@ VISUAL = [
   'planextentspoly'
 ]
 
+CLEAR = {
+  'maps': True,
+  'cones': True
+}
+
 def createTable(table, geom):
   print('CREATING ' + table)
   local.execute('DROP TABLE IF EXISTS "{}"'.format(table))
   local.execute("""CREATE TABLE "{}" (
     "gid" SERIAL,
+    "globalid" text,
     "remoteid" int,
-    "name" text,
+    "namecomple" text,
     "layer" text,
     "firstdispl" int,
     "lastdispla" int,
     "featuretyp" text,
     "stylename" text,
     "geom" geometry({}, 4326),
+    "creator" text,
+    "firstowner" text,
+    "owner" text,
+    "occupant" text,
+    "address" text,
     PRIMARY KEY ("gid")
   )""".format(table, geom))
   local.execute("""CREATE INDEX {}_geom_idx
@@ -89,7 +101,14 @@ def loadVisual(table):
   if len(results) > 0:
     table = 'viewsheds' if table == 'viewconespoly' else 'mapsplans'
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + table)
-    local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
+
+    if table == 'viewsheds' and CLEAR['cones'] == True:
+      local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
+      CLEAR['cones'] = False
+    elif table == 'mapsplans' and CLEAR['maps'] == True:
+      local.execute('TRUNCATE {} RESTART IDENTITY'.format(table))
+      CLEAR['maps'] = False
+	
     for r in results:
       local.execute("""INSERT INTO "{}" VALUES (
         DEFAULT,
@@ -116,6 +135,7 @@ def loadData(table, date=None):
   
   print('LOADING DATA FROM ' + table)
   q = """SELECT
+      '{}' AS globalid,
       objectid,
       name,
       '{}' AS layer,
@@ -124,7 +144,8 @@ def loadData(table, date=None):
       subtype,
       stylename,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
-    FROM {}.{}_evw""".format(layer, os.environ.get('DBSCHEMA'), table)
+    FROM {}.{}_evw""".format(uuid.uuid4(), layer, os.environ.get('DBSCHEMA'), table)
+
   if date:
     q += " WHERE last_edited_date > %s OR created_date > %s"
   remote.execute(q, (date, date))
@@ -142,24 +163,15 @@ def loadData(table, date=None):
         local.execute("""INSERT INTO "{}" VALUES (
           DEFAULT,
           %s,
-          %s, 
+          %s,
+          %s,
           %s,
           %s,
           %s,
           %s,
           %s,
           ST_Multi(ST_GeomFromText(%s, 4326))
-        )
-        ON CONFLICT (gid) DO UPDATE
-          SET
-            remoteid = %s,
-            name = %s,
-            layer = %s,
-            firstdispl = %s,
-            lastdispla = %s,
-            featuretyp = %s,
-            stylename = %s,
-            geom = ST_Multi(ST_GeomFromText(%s, 4326))""".format(feature), r + r)
+        )""".format(feature), r)
     local_conn.commit()
   return years
 
