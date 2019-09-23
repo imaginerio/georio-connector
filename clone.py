@@ -2,6 +2,7 @@ import datetime
 import math
 import os
 import re
+import uuid
 import psycopg2
 
 remote_conn = psycopg2.connect(
@@ -33,14 +34,13 @@ SKIP = [
   'plannedlandpoly',
   'plannedroadsline',
   'basemapextentspoly',
-  'landextentspoly'
 ]
 
 VISUAL = [
   'basemapextentspoly',
   'mapextentspoly',
   'viewconespoly',
-  'aerialextentspoly',
+  'surveyextentspoly',
   'planextentspoly'
 ]
 
@@ -95,8 +95,8 @@ def loadVisual(table):
       notes AS imageid,
       ST_AsText(ST_Transform(shape, 4326)) AS geom,
       NULL AS uploaddate,
-      {} latitude,
-      {} longitude,
+      {} lat,
+      {} long,
       creditline,
       title
     FROM {}.{}_evw
@@ -139,18 +139,18 @@ def loadData(table, date=None):
   
   print('LOADING DATA FROM ' + table)
   q = """SELECT
-      globalid,
+      '{}' AS globalid,
       objectid,
-      nameshort,
+      NULL AS nameshort,
       name,
       '{}' AS layer,
       firstyear,
       lastyear,
       type,
       stylename,
-      scalerank,
+      NULL AS scalerank,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
-    FROM {}.{}_evw""".format(layer, os.environ.get('DBSCHEMA'), table)
+    FROM {}.{}_evw""".format(uuid.uuid4(), layer, os.environ.get('DBSCHEMA'), table)
   if date:
     q += " WHERE last_edited_date > %s OR created_date > %s"
   remote.execute(q, (date, date))
@@ -160,7 +160,7 @@ def loadData(table, date=None):
   if len(results) > 0:
     print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
     for r in results:
-      if r[-1] != 'EMPTY':
+      if r[-1] != 'EMPTY' and not "nan" in r[-1]:
         local.execute("""INSERT INTO "{}" VALUES (
           DEFAULT,
           %s,
