@@ -217,4 +217,5 @@ if __name__ == "__main__":
   for g in GEOMS:
     local.execute('VACUUM ANALYZE "{}"'.format(tableName(g)))
 
+  local.execute('TRUNCATE cache RESTART IDENTITY')
   updateLog('clone')
