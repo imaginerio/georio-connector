@@ -29,27 +29,41 @@ GEOMS = {
 SKIP_TABLES = [
   'basemapextentspoly',
   'mapextentspoly',
-  'viewconeextentspoly',
+  'viewconespoly',
   'aerialextentspoly',
-  'planextentspoly'
+  'planextentspoly',
+  'surveyextentspoly'
 ]
 
 def loadData(table, date=None):
-  layer = re.sub(r"(point|line|poly)", "", table)
+  layerName = re.sub(r"(point|line|poly)", "", table)
   m = re.search(r"(point|line|poly)", table)
   feature = tableName(m.group(0))
+  print('CREATING LAYER FOR ' + table)
+  l = requests.post('http://localhost:5000/api/v1/make/layer', {
+    'geometry': feature,
+    'title': layerName
+  })
+  layer = l.json()['response']
+
+  print('CREATING TYPES FROM ' + table)
+  q = "SELECT COALESCE(type, '{}') AS type FROM {}.{}_evw GROUP BY type".format(layerName, os.environ.get('DBSCHEMA'), table)
+  remote.execute(q)
+  types = remote.fetchall()
+  type_dict = {}
+  for t in types:
+    typeName = t._asdict()['type']
+    ft = requests.post('http://localhost:5000/api/v1/make/type/' + layer, { 'title': typeName })
+    type_dict[typeName] = ft.json()['response']
+
   print('LOADING DATA FROM ' + table)
   q = """SELECT
-      objectid,
       name,
-      '{}' AS layer,
       firstyear,
       lastyear,
-      firstdate,
-      lastdate,
-      type,
+      COALESCE(type, '{}') AS type,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
-    FROM uilvim.{}_evw""".format(layer, table)
+    FROM {}.{}_evw""".format(layerName, os.environ.get('DBSCHEMA'), table)
   if date:
     q += " WHERE last_edited_date > %s OR created_date > %s"
   remote.execute(q, (date, date))
@@ -62,8 +76,20 @@ def loadData(table, date=None):
     for r in results:
       if r[-1] != 'EMPTY':
         data = r._asdict()
-        data['geometry'] = feature
-        r = s.post('http://localhost:5000/api/v1/create-feature/' + feature + '/wkt/', data)
+        body = {
+          'type': type_dict[data['type']],
+          'geometry': feature,
+          'dataType': 'wkt',
+          'data': {
+            'geometry': data['geom'],
+            'properties': {
+              'name': data['name'],
+              'firstyear': data['firstyear'],
+              'lastyear': data['lastyear'],
+            }
+          }
+        }
+        r = s.post('http://localhost:5000/api/v1/make/feature', body)
   return years
 
 # Feteching remote tables
