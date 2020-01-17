@@ -17,8 +17,6 @@ remote_conn = psycopg2.connect(
 )
 remote_conn.set_client_encoding('UTF8')
 remote = remote_conn.cursor(cursor_factory=NamedTupleCursor)
-local_conn = psycopg2.connect("host='localhost' dbname='houston'")
-local = local_conn.cursor()
 
 GEOMS = {
   'point': 'MULTIPOINT',
@@ -77,19 +75,19 @@ def loadData(table, date=None):
       if r[-1] != 'EMPTY':
         data = r._asdict()
         body = {
-          'type': type_dict[data['type']],
-          'geometry': feature,
-          'dataType': 'wkt',
-          'data': {
-            'geometry': data['geom'],
-            'properties': {
-              'name': data['name'],
-              'firstyear': data['firstyear'],
-              'lastyear': data['lastyear'],
+          "type": type_dict[data['type']],
+          "geometry": feature,
+          "dataType": "wkt",
+          "data": {
+            "geometry": data['geom'],
+            "properties": {
+              "name": data['name'],
+              "firstyear": data['firstyear'],
+              "lastyear": data['lastyear'],
             }
           }
         }
-        r = s.post('http://localhost:5000/api/v1/make/feature', body)
+        r = s.post(os.environ.get('APIHOST') + '/api/v1/make/feature', json=body)
   return years
 
 # Feteching remote tables
@@ -97,20 +95,6 @@ def getTables():
   remote.execute("SELECT viewname FROM pg_catalog.pg_views WHERE viewname LIKE '%evw'")
   tables = remote.fetchall()
   return list(map(lambda t: re.sub(r"_evw$", "", t[0]), tables))
-
-def updateLog(type):
-  local.execute("""CREATE TABLE IF NOT EXISTS update_log (
-    "id" serial,
-    "type" text,
-    "date" timestamp without time zone,
-    PRIMARY KEY ("id")
-  )""")
-  local.execute("""INSERT INTO update_log VALUES (
-    DEFAULT,
-    %s,
-    %s
-  )""", (type, datetime.datetime.now()))
-  local_conn.commit()
 
 def tableName(g):
   g = "polygon" if g == "poly" else g
@@ -121,9 +105,3 @@ if __name__ == "__main__":
   for table in tables:
     if not table in SKIP_TABLES:
       loadData(table)
-
-  local_conn.autocommit = True
-  for g in GEOMS:
-    local.execute('VACUUM ANALYZE "{}"'.format(tableName(g)))
-
-  updateLog('clone')
