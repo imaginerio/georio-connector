@@ -27,7 +27,7 @@ GEOMS = {
 SKIP_TABLES = [
   'basemapextentspoly',
   'mapextentspoly',
-  'viewconespoly',
+  'viewconeextentspoly',
   'aerialextentspoly',
   'planextentspoly',
   'surveyextentspoly'
@@ -63,19 +63,14 @@ def loadData(table, date=None):
 
   if len(results) > 0:
     print('CREATING SHAPEFILE WITH ' + str(len(results)) + ' ROWS INTO ' + feature)
-    with fiona.open('shapefiles/' + layerName + '.shp', 'w', 'ESRI Shapefile', schema=schema) as c:
+    with fiona.open('shapefiles/' + table + '.shp', 'w', 'ESRI Shapefile', schema=schema) as c:
       for r in results:
         if r[-1] != 'EMPTY':
           data = r._asdict()
-          geom = shapely.wkt.loads(data['geom'])
+          geom = shapely.wkt.loads(data.pop('geom'))
           c.write({
             'geometry': mapping(geom),
-            'properties': {
-              'name': 'test',
-              'firstyear': 1,
-              'lastyear': 2,
-              'type': 'type',
-            }
+            'properties': data
           })
 
 # Feteching remote tables
