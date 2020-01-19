@@ -1,11 +1,8 @@
-import datetime
-import math
 import os
 import re
 import shapely.wkt
 from shapely.geometry import mapping
 import fiona
-import requests
 import psycopg2
 from psycopg2.extras import NamedTupleCursor
 
