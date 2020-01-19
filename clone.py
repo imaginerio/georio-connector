@@ -2,6 +2,9 @@ import datetime
 import math
 import os
 import re
+import shapely.wkt
+from shapely.geometry import mapping
+import fiona
 import requests
 import psycopg2
 from psycopg2.extras import NamedTupleCursor
@@ -33,26 +36,22 @@ SKIP_TABLES = [
   'surveyextentspoly'
 ]
 
+PROPERTIES = {
+  'name': 'str',
+  'firstyear': 'int',
+  'lastyear': 'int',
+  'type': 'str'
+}
+
 def loadData(table, date=None):
   layerName = re.sub(r"(point|line|poly)", "", table)
   m = re.search(r"(point|line|poly)", table)
   feature = tableName(m.group(0))
-  print('CREATING LAYER FOR ' + table)
-  l = requests.post('http://localhost:5000/api/v1/make/layer', {
-    'geometry': feature,
-    'title': layerName
-  })
-  layer = l.json()['response']
 
-  print('CREATING TYPES FROM ' + table)
-  q = "SELECT COALESCE(type, '{}') AS type FROM {}.{}_evw GROUP BY type".format(layerName, os.environ.get('DBSCHEMA'), table)
-  remote.execute(q)
-  types = remote.fetchall()
-  type_dict = {}
-  for t in types:
-    typeName = t._asdict()['type']
-    ft = requests.post('http://localhost:5000/api/v1/make/type/' + layer, { 'title': typeName })
-    type_dict[typeName] = ft.json()['response']
+  schema = {
+    'geometry': feature,
+    'properties': PROPERTIES
+  }
 
   print('LOADING DATA FROM ' + table)
   q = """SELECT
@@ -62,33 +61,25 @@ def loadData(table, date=None):
       COALESCE(type, '{}') AS type,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
     FROM {}.{}_evw""".format(layerName, os.environ.get('DBSCHEMA'), table)
-  if date:
-    q += " WHERE last_edited_date > %s OR created_date > %s"
   remote.execute(q, (date, date))
   results = remote.fetchall()
 
-  years = []
   if len(results) > 0:
-    print('INSERTING ' + str(len(results)) + ' ROWS INTO ' + feature)
-    s = requests.Session()
-    for r in results:
-      if r[-1] != 'EMPTY':
-        data = r._asdict()
-        body = {
-          "type": type_dict[data['type']],
-          "geometry": feature,
-          "dataType": "wkt",
-          "data": {
-            "geometry": data['geom'],
-            "properties": {
-              "name": data['name'],
-              "firstyear": data['firstyear'],
-              "lastyear": data['lastyear'],
+    print('CREATING SHAPEFILE WITH ' + str(len(results)) + ' ROWS INTO ' + feature)
+    with fiona.open('shapefiles/' + layerName + '.shp', 'w', 'ESRI Shapefile', schema=schema) as c:
+      for r in results:
+        if r[-1] != 'EMPTY':
+          data = r._asdict()
+          geom = shapely.wkt.loads(data['geom'])
+          c.write({
+            'geometry': mapping(geom),
+            'properties': {
+              'name': 'test',
+              'firstyear': 1,
+              'lastyear': 2,
+              'type': 'type',
             }
-          }
-        }
-        r = s.post(os.environ.get('APIHOST') + '/api/v1/make/feature', json=body)
-  return years
+          })
 
 # Feteching remote tables
 def getTables():
@@ -97,8 +88,11 @@ def getTables():
   return list(map(lambda t: re.sub(r"_evw$", "", t[0]), tables))
 
 def tableName(g):
-  g = "polygon" if g == "poly" else g
-  return g
+  if g == "poly":
+    return "Polygon"
+  if g == "line":
+    return "LineString"
+  return "Point"
 
 if __name__ == "__main__":
   tables = getTables()
