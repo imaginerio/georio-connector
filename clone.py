@@ -53,8 +53,8 @@ def loadData(table, date=None):
   print('LOADING DATA FROM ' + table)
   q = """SELECT
       name,
-      firstyear,
-      lastyear,
+      COALESCE(firstyear, LEFT(firstdate::TEXT, 4)::INT) AS firstyear,
+      COALESCE(lastyear, LEFT(lastdate::TEXT, 4)::INT) AS lastyear,
       COALESCE(type, '{}') AS type,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
     FROM {}.{}_evw""".format(layerName, os.environ.get('DBSCHEMA'), table)
