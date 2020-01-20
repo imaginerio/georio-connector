@@ -25,6 +25,7 @@ GEOMS = {
 }
 
 SKIP_TABLES = [
+  'immigrantbusinesspoint',
   'basemapextentspoly',
   'mapextentspoly',
   'viewconeextentspoly',
