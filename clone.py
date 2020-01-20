@@ -58,7 +58,8 @@ def loadData(table, date=None):
       COALESCE(lastyear, LEFT(lastdate::TEXT, 4)::INT) AS lastyear,
       COALESCE(type, '{}') AS type,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
-    FROM {}.{}_evw""".format(layerName, os.environ.get('DBSCHEMA'), table)
+    FROM {}.{}_evw
+    WHERE LENGTH(shape::TEXT) < 5000000""".format(layerName, os.environ.get('DBSCHEMA'), table)
   remote.execute(q, (date, date))
   results = remote.fetchall()
 
