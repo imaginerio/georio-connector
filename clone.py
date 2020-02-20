@@ -34,6 +34,15 @@ SKIP_TABLES = [
   'surveyextentspoly'
 ]
 
+VIEWCONE_TABLES = [
+  'viewconespoly'
+]
+
+VISUAL_TABLES = [
+  'mapextentspoly',
+  'planextentspoly',
+]
+
 PROPERTIES = {
   'name': 'str',
   'firstyear': 'int',
@@ -41,15 +50,28 @@ PROPERTIES = {
   'type': 'str'
 }
 
+def makeShapefile(table, results, feature, properties):
+  schema = {
+    'geometry': feature,
+    'properties': properties
+  }
+
+  if len(results) > 0:
+    print('CREATING SHAPEFILE WITH ' + str(len(results)) + ' ROWS INTO ' + feature)
+    with fiona.open('shapefiles/' + table + '.shp', 'w', 'ESRI Shapefile', encoding='utf-8', schema=schema) as c:
+      for r in results:
+        if r[-1] != 'EMPTY':
+          data = r._asdict()
+          geom = shapely.wkt.loads(data.pop('geom'))
+          c.write({
+            'geometry': mapping(geom),
+            'properties': data
+          })
+
 def loadData(table, date=None):
   layerName = re.sub(r"(point|line|poly)", "", table)
   m = re.search(r"(point|line|poly)", table)
   feature = tableName(m.group(0))
-
-  schema = {
-    'geometry': feature,
-    'properties': PROPERTIES
-  }
 
   print('LOADING DATA FROM ' + table)
   q = """SELECT
@@ -62,18 +84,66 @@ def loadData(table, date=None):
     WHERE LENGTH(shape::TEXT) < 5000000""".format(layerName, os.environ.get('DBSCHEMA'), table)
   remote.execute(q, (date, date))
   results = remote.fetchall()
+  makeShapefile(table, results, feature, PROPERTIES)
+  
 
-  if len(results) > 0:
-    print('CREATING SHAPEFILE WITH ' + str(len(results)) + ' ROWS INTO ' + feature)
-    with fiona.open('shapefiles/' + table + '.shp', 'w', 'ESRI Shapefile', schema=schema) as c:
-      for r in results:
-        if r[-1] != 'EMPTY':
-          data = r._asdict()
-          geom = shapely.wkt.loads(data.pop('geom'))
-          c.write({
-            'geometry': mapping(geom),
-            'properties': data
-          })
+def loadViewcone(table):
+  properties = {
+    'ss_id': 'str',
+    'ssc_id': 'str',
+    'creditline': 'str',
+    'creator': 'str', 
+    'date': 'str',
+    'title': 'str',
+    'latitude': 'float',
+    'longitude': 'float',
+    'firstyear': 'int',
+    'lastyear': 'int'
+  }
+  print('LOADING DATA FROM ' + table)
+  q = """SELECT
+      ss_id,
+      ssc_id,
+      creditline,
+      creator,
+      date,
+      title,
+      latitude::FLOAT,
+      longitude::FLOAT,
+      COALESCE(firstyear, LEFT(firstdate::TEXT, 4)::INT) AS firstyear,
+      COALESCE(lastyear, LEFT(lastdate::TEXT, 4)::INT) AS lastyear,
+      ST_AsText(ST_Transform(shape, 4326)) AS geom
+    FROM {}.{}_evw""".format(os.environ.get('DBSCHEMA'), table)
+  remote.execute(q)
+  results = remote.fetchall()
+  makeShapefile(table, results, 'Polygon', properties)
+
+def loadVisual(table):
+  properties = {
+    'ss_id': 'str',
+    'ssc_id': 'str',
+    'creditline': 'str',
+    'creator': 'str', 
+    'date': 'str',
+    'title': 'str',
+    'firstyear': 'int',
+    'lastyear': 'int'
+  }
+  print('LOADING DATA FROM ' + table)
+  q = """SELECT
+      ss_id,
+      ssc_id,
+      creditline,
+      creator,
+      date,
+      title,
+      COALESCE(firstyear, LEFT(firstdate::TEXT, 4)::INT) AS firstyear,
+      COALESCE(lastyear, LEFT(lastdate::TEXT, 4)::INT) AS lastyear,
+      ST_AsText(ST_Envelope(ST_Transform(shape, 4326))) AS geom
+    FROM {}.{}_evw""".format(os.environ.get('DBSCHEMA'), table)
+  remote.execute(q)
+  results = remote.fetchall()
+  makeShapefile(table, results, 'Polygon', properties)
 
 # Feteching remote tables
 def getTables():
@@ -91,5 +161,9 @@ def tableName(g):
 if __name__ == "__main__":
   tables = getTables()
   for table in tables:
-    if not table in SKIP_TABLES:
+    if table in VIEWCONE_TABLES:
+      loadViewcone(table)
+    elif table in VISUAL_TABLES:
+      loadVisual(table)
+    elif not table in SKIP_TABLES:
       loadData(table)
