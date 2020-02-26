@@ -29,7 +29,6 @@ SKIP_TABLES = [
   'basemapextentspoly',
   'mapextentspoly',
   'viewconeextentspoly',
-  'aerialextentspoly',
   'planextentspoly',
   'surveyextentspoly'
 ]
@@ -39,6 +38,7 @@ VIEWCONE_TABLES = [
 ]
 
 VISUAL_TABLES = [
+  'aerialextentspoly',
   'mapextentspoly',
   'planextentspoly',
 ]
