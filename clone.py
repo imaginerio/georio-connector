@@ -45,6 +45,7 @@ VISUAL_TABLES = [
 
 PROPERTIES = {
   'name': 'str',
+  'namealt': 'str',
   'firstyear': 'int',
   'lastyear': 'int',
   'type': 'str'
@@ -72,16 +73,18 @@ def loadData(table, date=None):
   layerName = re.sub(r"(point|line|poly)", "", table)
   m = re.search(r"(point|line|poly)", table)
   feature = tableName(m.group(0))
+  namealt = "REGEXP_REPLACE(namealt, '\D*', '')" if table == 'roadsline' else "''"
 
   print('LOADING DATA FROM ' + table)
   q = """SELECT
       name,
+      {} AS namealt,
       COALESCE(firstyear, LEFT(firstdate::TEXT, 4)::INT) AS firstyear,
       COALESCE(lastyear, LEFT(lastdate::TEXT, 4)::INT) AS lastyear,
       COALESCE(type, '{}') AS type,
       ST_AsText(ST_Transform(shape, 4326)) AS geom
     FROM {}.{}_evw
-    WHERE LENGTH(shape::TEXT) < 5000000""".format(layerName, os.environ.get('DBSCHEMA'), table)
+    WHERE LENGTH(shape::TEXT) < 5000000""".format(namealt, layerName, os.environ.get('DBSCHEMA'), table)
   remote.execute(q, (date, date))
   results = remote.fetchall()
   makeShapefile(table, results, feature, PROPERTIES)
